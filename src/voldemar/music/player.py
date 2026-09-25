@@ -13,7 +13,7 @@ import wavelink
 from voldemar.music import resolver
 from voldemar.music.queue import QueueEntry, TrackQueue
 from voldemar.ui.formatting import entry_link
-from voldemar.ui.now_playing import now_playing_embed
+from voldemar.ui.now_playing import NowPlayingView, now_playing_embed
 
 if TYPE_CHECKING:
     from voldemar.bot import VoldemarBot
@@ -36,7 +36,10 @@ class MusicPlayer(wavelink.Player):
         self.autoplay = wavelink.AutoPlayMode.disabled
         self.tracks = TrackQueue(max_size=self.bot.settings.max_queue_size)
         self.text_channel: discord.abc.Messageable | None = None
+        self.panel: discord.Message | None = None  # the latest now-playing message with buttons
         self.last_error: str | None = None  # set by track exception events
+        self._panel_entry: QueueEntry | None = None
+        self._background: set[asyncio.Task[Any]] = set()
         self._lock = asyncio.Lock()
         self._closed = False
         self._failures = 0
@@ -86,10 +89,49 @@ class MusicPlayer(wavelink.Player):
         self.tracks.reset()
         await self.disconnect()
 
-    def queue_changed(self) -> None:
-        """Call after reordering or removing entries, so the new next song is looked up early."""
-        if self.tracks.current is not None:
-            self._prefetch_next()
+    def state_changed(self, *, redraw: bool = True) -> None:
+        """Call after changing the queue, loop mode or pause state: looks up the new next song
+        early and updates the now-playing panel (unless the caller redraws it itself)."""
+        if self.tracks.current is None:
+            return
+        self._prefetch_next()
+        if redraw and self.panel is not None:
+            self._spawn(self.refresh_panel())
+
+    # --- Now-playing panel -------------------------------------------------------------------
+
+    async def refresh_panel(self) -> None:
+        current = self.tracks.current
+        if self.panel is None or current is None:
+            return
+        with contextlib.suppress(discord.HTTPException):
+            await self.panel.edit(
+                embed=now_playing_embed(self, current), view=NowPlayingView.render(self)
+            )
+
+    async def retire_panel(self) -> None:
+        """Remove the buttons from the last panel."""
+        panel, self.panel, self._panel_entry = self.panel, None, None
+        if panel is not None:
+            with contextlib.suppress(discord.HTTPException):
+                await panel.edit(view=None)
+
+    async def _post_panel(self, entry: QueueEntry) -> None:
+        if entry is self._panel_entry and self.panel is not None:
+            await self.refresh_panel()  # the same song again (loop): update, don't repost
+            return
+        await self.retire_panel()
+        if self.text_channel is None:
+            return
+        try:
+            self.panel = await self.text_channel.send(
+                embed=now_playing_embed(self, entry),
+                view=NowPlayingView.render(self),
+                allowed_mentions=NO_MENTIONS,
+            )
+            self._panel_entry = entry
+        except discord.HTTPException as e:
+            log.warning("Couldn't post the now-playing message: %s", e)
 
     # --- Lavalink events, forwarded by cogs/events.py --------------------------------------------
 
@@ -98,9 +140,8 @@ class MusicPlayer(wavelink.Player):
         self.last_error = None
         self._cancel(self._idle_task)
         self._prefetch_next()
-        current = self.tracks.current
-        if current is not None:
-            await self.notify(embed=now_playing_embed(self, current))
+        if self.tracks.current is not None:
+            await self._post_panel(self.tracks.current)
 
     async def on_track_end(self, track: wavelink.Playable, reason: str) -> None:
         # "replaced", "stopped" and "cleanup" come from our own play/skip/disconnect calls.
@@ -152,10 +193,12 @@ class MusicPlayer(wavelink.Player):
                     reason = e.error or "the music server refused it"
             log.warning("Couldn't play %r: %s", entry.title, reason)
             if not await self._record_failure(entry, reason):
-                return None
+                break
             entry = self.tracks.advance(finished=False, discard=True)
 
+        # Nothing (more) to play.
         if not self._closed:
+            await self.retire_panel()
             self._cancel(self._idle_task)
             self._idle_task = asyncio.create_task(
                 self._leave_later(
@@ -237,13 +280,25 @@ class MusicPlayer(wavelink.Player):
         if self.text_channel is None:
             return
         try:
-            await self.text_channel.send(content, embed=embed, allowed_mentions=NO_MENTIONS)
+            await self.text_channel.send(
+                content,
+                embed=embed,
+                allowed_mentions=NO_MENTIONS,
+                suppress_embeds=embed is None,  # no link previews under plain messages
+            )
         except discord.HTTPException as e:
             log.warning("Couldn't send a message to the text channel: %s", e)
 
+    def _spawn(self, coro: Any) -> None:
+        task = asyncio.create_task(coro)
+        self._background.add(task)  # keep a reference until it's done
+        task.add_done_callback(self._background.discard)
+
     @staticmethod
     def _cancel(task: asyncio.Task[Any] | None) -> None:
-        if task is not None and not task.done():
+        # Never cancel the running task: an auto-leave timer calls teardown() -> cleanup() itself,
+        # and cancelling it there would abort the disconnect halfway.
+        if task is not None and not task.done() and task is not asyncio.current_task():
             task.cancel()
 
     def cleanup(self) -> None:
@@ -254,5 +309,7 @@ class MusicPlayer(wavelink.Player):
         if self._prefetch is not None:
             self._cancel(self._prefetch[1])
             self._prefetch = None
+        if self.panel is not None:
+            self._spawn(self.retire_panel())
         with contextlib.suppress(KeyError, AttributeError):
             super().cleanup()

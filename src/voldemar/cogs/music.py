@@ -174,7 +174,7 @@ class MusicCog(commands.Cog):
             return
         started = await player.start_if_idle()
         if not started:
-            player.queue_changed()
+            player.state_changed()
         await reply(interaction, added_message(result, added, player, started))
 
     @app_commands.command(description="Pause the music")
@@ -184,6 +184,7 @@ class MusicCog(commands.Cog):
         if player.paused:
             raise GuardError("Already paused. Use /resume to continue.")
         await player.pause(True)
+        player.state_changed()
         await reply(interaction, f"⏸️ Paused by {interaction.user.mention}.")
 
     @app_commands.command(description="Continue playing after /pause")
@@ -193,6 +194,7 @@ class MusicCog(commands.Cog):
         if not player.paused:
             raise GuardError("The music isn't paused.")
         await player.pause(False)
+        player.state_changed()
         await reply(interaction, f"▶️ Resumed by {interaction.user.mention}.")
 
     @app_commands.command(description="Skip the current song, or jump to a position in the queue")
@@ -302,7 +304,7 @@ class MusicCog(commands.Cog):
     async def loop(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
         player = require_player(interaction)
         player.tracks.loop = LoopMode(mode.value)
-        player.queue_changed()
+        player.state_changed()
         label = LOOP_LABELS[player.tracks.loop]
         await reply(interaction, f"🔁 {interaction.user.mention} set loop to **{label}**.")
 
@@ -314,7 +316,7 @@ class MusicCog(commands.Cog):
         if count < 2:
             raise GuardError("There need to be at least two songs in the queue to shuffle.")
         player.tracks.shuffle()
-        player.queue_changed()
+        player.state_changed()
         await reply(interaction, f"🔀 {interaction.user.mention} shuffled {songs(count)}.")
 
     @app_commands.command(description="Remove a song from the queue")
@@ -329,7 +331,7 @@ class MusicCog(commands.Cog):
         except IndexError:
             count = songs(len(player.tracks.upcoming))
             raise GuardError(f"There's no position {position}: the queue has {count}.") from None
-        player.queue_changed()
+        player.state_changed()
         await reply(interaction, f"🗑️ {interaction.user.mention} removed {entry_link(entry)}.")
 
     @app_commands.command(description="Move a song to another position in the queue")
@@ -347,7 +349,7 @@ class MusicCog(commands.Cog):
             entry = player.tracks.move(from_, to)
         except IndexError:
             raise GuardError(f"Positions go from 1 to {len(player.tracks.upcoming)}.") from None
-        player.queue_changed()
+        player.state_changed()
         await reply(interaction, f"↕️ Moved {entry_link(entry)} to position {to}.")
 
     @app_commands.command(description="Remove all upcoming songs (the current one keeps playing)")
@@ -357,6 +359,7 @@ class MusicCog(commands.Cog):
         count = player.tracks.clear()
         if count == 0:
             raise GuardError("The queue is already empty.")
+        player.state_changed()
         await reply(interaction, f"🧹 {interaction.user.mention} cleared {songs(count)}.")
 
     @app_commands.command(name="help", description="Show what Voldemar can do")

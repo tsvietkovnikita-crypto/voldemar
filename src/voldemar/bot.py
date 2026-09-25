@@ -13,6 +13,7 @@ from discord.ext import commands
 from voldemar.cogs.events import EventsCog
 from voldemar.cogs.music import MusicCog
 from voldemar.config import Settings
+from voldemar.ui.now_playing import NowPlayingView
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class VoldemarBot(commands.Bot):
         self._lavalink_task = asyncio.create_task(self._connect_lavalink())
         await self.add_cog(MusicCog(self))
         await self.add_cog(EventsCog(self))
+        self.add_view(NowPlayingView())  # answers now-playing buttons, even on older messages
         await self.sync_commands()
 
     async def _connect_lavalink(self) -> None:
