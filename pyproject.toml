@@ -31,6 +31,7 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
+allowed-confusables = ["➕"]  # an emoji in bot messages, not a stray plus sign
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

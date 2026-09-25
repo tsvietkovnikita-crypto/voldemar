@@ -86,6 +86,11 @@ class MusicPlayer(wavelink.Player):
         self.tracks.reset()
         await self.disconnect()
 
+    def queue_changed(self) -> None:
+        """Call after reordering or removing entries, so the new next song is looked up early."""
+        if self.tracks.current is not None:
+            self._prefetch_next()
+
     # --- Lavalink events, forwarded by cogs/events.py --------------------------------------------
 
     async def on_track_start(self) -> None:
