@@ -84,20 +84,32 @@ class VoldemarBot(commands.Bot):
             return
 
         for guild_id in self.settings.guild_ids:
-            guild = discord.Object(id=guild_id)
-            self.tree.copy_global_to(guild=guild)
-            try:
-                synced = await self.tree.sync(guild=guild)
-            except discord.Forbidden:
-                log.error(
-                    "Can't register commands in server %s: invite the bot there first", guild_id
-                )
-                continue
-            log.info("Registered %d slash commands in server %s", len(synced), guild_id)
+            await self._sync_guild(discord.Object(id=guild_id))
 
-        # Drop global copies so the servers above don't show every command twice.
+        # Unregister global copies so those servers don't list every command twice. The commands
+        # stay in the local tree, so servers that invite the bot later still get a copy.
+        commands_ = self.tree.get_commands()
         self.tree.clear_commands(guild=None)
         await self.tree.sync()
+        for command in commands_:
+            self.tree.add_command(command)
+
+    async def _sync_guild(self, guild: discord.abc.Snowflake) -> None:
+        self.tree.copy_global_to(guild=guild)
+        try:
+            synced = await self.tree.sync(guild=guild)
+        except discord.Forbidden:
+            log.warning(
+                "Can't register commands in server %s yet: invite the bot with the link below",
+                guild.id,
+            )
+            return
+        log.info("Registered %d slash commands in server %s", len(synced), guild.id)
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        log.info("Joined server %s (%s)", guild.name, guild.id)
+        if guild.id in self.settings.guild_ids:
+            await self._sync_guild(guild)
 
     async def on_ready(self) -> None:
         assert self.user is not None
