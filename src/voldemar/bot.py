@@ -1,12 +1,16 @@
-"""The Discord client: intents, cogs and slash-command registration."""
+"""The Discord client: intents, cogs, the Lavalink connection and slash-command registration."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
+import aiohttp
 import discord
+import wavelink
 from discord.ext import commands
 
+from voldemar.cogs.events import EventsCog
 from voldemar.cogs.music import MusicCog
 from voldemar.config import Settings
 
@@ -36,10 +40,40 @@ class VoldemarBot(commands.Bot):
         intents.voice_states = True
         super().__init__(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
         self.settings = settings
+        self.http_session: aiohttp.ClientSession | None = None
+        self._lavalink_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
+        self.http_session = aiohttp.ClientSession()
+        # Connecting retries until Lavalink answers; don't hold up the Discord login meanwhile.
+        self._lavalink_task = asyncio.create_task(self._connect_lavalink())
         await self.add_cog(MusicCog(self))
+        await self.add_cog(EventsCog(self))
         await self.sync_commands()
+
+    async def _connect_lavalink(self) -> None:
+        node = wavelink.Node(
+            uri=self.settings.lavalink_uri,
+            password=self.settings.lavalink_password,
+            # Leaving idle or empty channels is handled by MusicPlayer itself.
+            inactive_player_timeout=None,
+            inactive_channel_tokens=None,
+        )
+        nodes = await wavelink.Pool.connect(nodes=[node], client=self)
+        if not nodes:
+            log.error(
+                "Couldn't connect to Lavalink at %s. If the log above mentions authentication, "
+                "LAVALINK_PASSWORD doesn't match the running Lavalink.",
+                self.settings.lavalink_uri,
+            )
+
+    async def close(self) -> None:
+        await super().close()  # also leaves all voice channels
+        if self._lavalink_task is not None:
+            self._lavalink_task.cancel()
+        await wavelink.Pool.close()
+        if self.http_session is not None:
+            await self.http_session.close()
 
     async def sync_commands(self) -> None:
         if not self.settings.guild_ids:
