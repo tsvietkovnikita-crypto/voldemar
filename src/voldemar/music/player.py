@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_FAILURES = 5
 NO_MENTIONS = discord.AllowedMentions.none()
+PLAY_ID_KEY = "voldemar_play_id"
 
 
 class MusicPlayer(wavelink.Player):
@@ -43,6 +44,7 @@ class MusicPlayer(wavelink.Player):
         self._lock = asyncio.Lock()
         self._closed = False
         self._failures = 0
+        self._play_id = 0  # increases with every play() call; see on_track_end
         self._prefetch: tuple[QueueEntry, asyncio.Task[wavelink.Playable | None]] | None = None
         self._idle_task: asyncio.Task[None] | None = None
         self._empty_task: asyncio.Task[None] | None = None
@@ -149,7 +151,10 @@ class MusicPlayer(wavelink.Player):
             return
         async with self._lock:
             entry = self.tracks.current
-            if entry is None or entry.playable is None or entry.playable.encoded != track.encoded:
+            # Match the event to the play it belongs to by the ID we sent as userData. (Not by
+            # the encoded track: Lavalink re-encodes it with the current position, so at the
+            # end of a song it never equals the string we sent.)
+            if entry is None or dict(track.extras).get(PLAY_ID_KEY) != self._play_id:
                 return  # a late event for a track we already moved past
             error, self.last_error = self.last_error, None
             if reason == "loadFailed":
@@ -186,6 +191,8 @@ class MusicPlayer(wavelink.Player):
             if playable is not None and self._closed:
                 return None
             if playable is not None:
+                self._play_id += 1
+                playable.extras = {PLAY_ID_KEY: self._play_id}  # echoed back in track events
                 try:
                     await self.play(playable, add_history=False)
                     return entry

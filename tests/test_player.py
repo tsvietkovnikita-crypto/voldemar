@@ -17,6 +17,22 @@ class FakePlayable:
         self.title = name
         self.length = 180_000
         self.artwork = f"https://img/{name}.jpg"
+        self.extras: dict = {}
+
+
+def as_lavalink_sends_it(track: FakePlayable, position: int) -> FakePlayable:
+    """The track as it comes back in Lavalink's events: a new object, re-encoded with the
+    current playback position (so `encoded` differs), with the userData we sent unchanged."""
+    copy = FakePlayable(track.title)
+    copy.encoded = f"{track.encoded}@{position}"
+    copy.extras = dict(track.extras)
+    return copy
+
+
+def ended(player: MusicPlayer) -> FakePlayable:
+    """The track in the end event for the song that's playing now."""
+    current = player.tracks.current.playable
+    return as_lavalink_sends_it(current, position=current.length)
 
 
 def entry(name: str, *, pending: bool = False) -> QueueEntry:
@@ -79,7 +95,7 @@ def test_starts_when_idle_and_plays_in_order(monkeypatch) -> None:
         player.tracks.add([entry("A"), entry("B")])
         assert await player.start_if_idle() is True
         assert await player.start_if_idle() is False
-        await player.on_track_end(player.tracks.current.playable, "finished")
+        await player.on_track_end(ended(player), "finished")
         assert log.played == ["A", "B"]
 
     run(scenario())
@@ -124,18 +140,38 @@ def test_gives_up_after_too_many_failures_in_a_row(monkeypatch) -> None:
     run(scenario())
 
 
-def test_ignores_late_and_self_caused_track_end_events(monkeypatch) -> None:
+def test_next_song_starts_when_a_song_ends(monkeypatch) -> None:
+    """Regression: the end event's track is re-encoded with its end position, so it never
+    equals the encoded string that was sent; it's matched by the play ID in userData."""
+
     async def scenario():
         player, log = make_player(monkeypatch, {})
         player.tracks.add([entry("A"), entry("B"), entry("C")])
         await player.start_if_idle()
-        old = player.tracks.current.playable
-        await player.skip_current()  # user skips A -> B
-        await player.on_track_end(old, "finished")  # late event for A must not skip B
-        await player.on_track_end(player.tracks.current.playable, "replaced")
-        await player.on_track_end(player.tracks.current.playable, "stopped")
-        assert log.played == ["A", "B"]
-        assert player.tracks.current.title == "B"
+        event_track = ended(player)
+        assert event_track.encoded != player.tracks.current.playable.encoded
+        await player.on_track_end(event_track, "finished")
+        await player.on_track_end(ended(player), "finished")
+        assert log.played == ["A", "B", "C"]
+
+    run(scenario())
+
+
+def test_ignores_late_and_self_caused_track_end_events(monkeypatch) -> None:
+    async def scenario():
+        player, log = make_player(monkeypatch, {})
+        # The same song twice: a late event for the first copy must not skip the second.
+        first, second, last = entry("A"), entry("A"), entry("C")
+        player.tracks.add([first, second, last])
+        await player.start_if_idle()
+        old = ended(player)
+        await player.skip_current()  # user skips to the second "A"
+        await player.on_track_end(old, "finished")  # arrives late, belongs to the first "A"
+        await player.on_track_end(ended(player), "replaced")
+        await player.on_track_end(ended(player), "stopped")
+        assert log.played == ["A", "A"]
+        assert player.tracks.current is second
+        assert player.tracks.upcoming == (last,)
 
     run(scenario())
 
@@ -146,7 +182,7 @@ def test_load_failure_moves_on(monkeypatch) -> None:
         player.tracks.add([entry("A"), entry("B")])
         await player.start_if_idle()
         player.last_error = "This video is unavailable"
-        await player.on_track_end(player.tracks.current.playable, "loadFailed")
+        await player.on_track_end(ended(player), "loadFailed")
         assert log.played == ["A", "B"]
         assert "This video is unavailable" in log.messages[0]
 
@@ -159,7 +195,7 @@ def test_loop_track_replays_the_same_song(monkeypatch) -> None:
         player.tracks.add([entry("A"), entry("B")])
         await player.start_if_idle()
         player.tracks.loop = LoopMode.TRACK
-        await player.on_track_end(player.tracks.current.playable, "finished")
+        await player.on_track_end(ended(player), "finished")
         assert log.played == ["A", "A"]
 
     run(scenario())
