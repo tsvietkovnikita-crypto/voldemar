@@ -1,7 +1,46 @@
 import pytest
 
 from voldemar.music.queue import QueueEntry
-from voldemar.ui.formatting import entry_link, format_duration, parse_time, progress_bar
+from voldemar.ui.formatting import (
+    entry_link,
+    format_duration,
+    parse_time,
+    progress_bar,
+    short_error,
+)
+
+# The start of a real Lavalink report for a YouTube video no client could stream.
+YOUTUBE_REPORT = (
+    """(yts.version: 1.18.2) All clients failed to load the item.
+
+Client [ANDROID_VR] failed: This video requires login.
+\tat dev.lavalink.youtube.clients.skeleton.Client.getPlayabilityStatus(Client.java:94)
+\tat dev.lavalink.youtube.clients.skeleton.NonMusicClient.loadTrackInfo(NonMusicClient.java:163)
+"""
+    + "\tat some.Frame(Source.java:1)\n" * 200
+)
+
+
+def test_short_error_turns_youtube_reports_into_one_line() -> None:
+    assert len(YOUTUBE_REPORT) > 2000
+    assert short_error(YOUTUBE_REPORT) == "YouTube refused to stream it"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("This video is unavailable", "This video is unavailable"),
+        ("\n  Something went wrong\nat Frame(x)", "Something went wrong"),
+        ("", "unknown error"),
+        (None, "unknown error"),
+    ],
+)
+def test_short_error(message: str | None, expected: str) -> None:
+    assert short_error(message) == expected
+
+
+def test_short_error_is_bounded() -> None:
+    assert len(short_error("x" * 5000)) == 200
 
 
 @pytest.mark.parametrize(

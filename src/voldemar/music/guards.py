@@ -71,7 +71,7 @@ async def join(interaction: discord.Interaction, channel: VoiceChannel) -> Music
     player = get_player(interaction.guild)
     try:
         if player is None:
-            player = await channel.connect(cls=MusicPlayer, self_deaf=True, timeout=15)
+            player = await channel.connect(cls=MusicPlayer, timeout=15)
             player.text_channel = interaction.channel  # type: ignore[assignment]
             await player.set_volume(player.bot.settings.default_volume)
         elif player.channel != channel:

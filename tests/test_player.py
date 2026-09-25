@@ -203,3 +203,19 @@ def test_nothing_plays_after_stop(monkeypatch) -> None:
         assert log.played == ["A"]
 
     run(scenario())
+
+
+def test_messages_never_exceed_discords_limit(monkeypatch) -> None:
+    async def scenario():
+        player, _ = make_player(monkeypatch, {})
+        sent = []
+
+        class Channel:
+            async def send(self, content, **kwargs):
+                sent.append(content)
+
+        player.text_channel = Channel()
+        await MusicPlayer.notify(player, "⚠️ " + "x" * 5000)  # the real notify, not the fake
+        assert len(sent[0]) == 2000
+
+    run(scenario())

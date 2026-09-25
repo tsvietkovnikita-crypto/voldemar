@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from voldemar.music.guards import get_player
 from voldemar.music.player import MusicPlayer
+from voldemar.ui.formatting import short_error
 
 if TYPE_CHECKING:
     from voldemar.bot import VoldemarBot
@@ -54,7 +55,13 @@ class EventsCog(commands.Cog):
         self, payload: wavelink.TrackExceptionEventPayload
     ) -> None:
         if isinstance(payload.player, MusicPlayer):
-            payload.player.last_error = payload.exception.get("message") or "unknown error"
+            reason = short_error(payload.exception.get("message"))
+            log.warning(
+                "Couldn't play %r: %s (full report in logs/lavalink.log)",
+                payload.track.title,
+                reason,
+            )
+            payload.player.last_error = reason
 
     @commands.Cog.listener()
     async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload) -> None:

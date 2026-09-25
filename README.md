@@ -134,7 +134,7 @@ Logs are in `logs/voldemar.log` (the bot) and `logs/lavalink.log` (the audio ser
 
 **YouTube songs fail, or "Sign in to confirm you're not a bot".** YouTube changes things regularly. Try these in order:
 
-1. Update the YouTube plugin: set the newest version from [youtube-source releases](https://github.com/lavalink-devs/youtube-source/releases) in `lavalink/application.yml` (`dev.lavalink.youtube:youtube-plugin:X.Y.Z`) and restart. Lavalink downloads it by itself.
+1. Update the YouTube plugin in `lavalink/application.yml` and restart; Lavalink downloads it by itself. It's currently pinned to a development build, because release 1.18.2 can no longer stream most videos. Once a release newer than 1.18.2 appears on [youtube-source releases](https://github.com/lavalink-devs/youtube-source/releases), switch to it (`dev.lavalink.youtube:youtube-plugin:X.Y.Z` with `snapshot: false`). The comments above `clients:` in the same file explain which YouTube clients currently work for what.
 2. Sign in with a **spare** Google account (never your main one; the account can be restricted):
    1. Set `YOUTUBE_OAUTH_ENABLED=true` in `.env`.
    2. Run `uv run voldemar-lavalink`. The console shows a code: open https://www.google.com/device, enter it and pick the spare account.

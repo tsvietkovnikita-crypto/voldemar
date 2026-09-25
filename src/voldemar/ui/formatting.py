@@ -62,6 +62,18 @@ def truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def short_error(message: str | None, limit: int = 200) -> str:
+    """One readable line from a Lavalink error. YouTube failures arrive as reports several
+    kilobytes long (every client's failure with a stack trace), far over Discord's 2000 limit."""
+    lines = [line.strip() for line in (message or "").splitlines() if line.strip()]
+    if not lines:
+        return "unknown error"
+    first = re.sub(r"^\(yts\.version: [^)]*\)\s*", "", lines[0])
+    if first.startswith("All clients failed"):
+        return "YouTube refused to stream it"
+    return truncate(first, limit)
+
+
 def entry_link(entry: QueueEntry, limit: int = 70) -> str:
     """The title as a markdown link (when it has a URL), safe to embed in a message."""
     title = escape_markdown(truncate(entry.title, limit).replace("[", "(").replace("]", ")"))

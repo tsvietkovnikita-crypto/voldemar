@@ -12,7 +12,7 @@ import wavelink
 
 from voldemar.music import resolver
 from voldemar.music.queue import QueueEntry, TrackQueue
-from voldemar.ui.formatting import entry_link
+from voldemar.ui.formatting import entry_link, truncate
 from voldemar.ui.now_playing import NowPlayingView, now_playing_embed
 
 if TYPE_CHECKING:
@@ -281,7 +281,7 @@ class MusicPlayer(wavelink.Player):
             return
         try:
             await self.text_channel.send(
-                content,
+                truncate(content, 2000) if content else content,  # Discord's message limit
                 embed=embed,
                 allowed_mentions=NO_MENTIONS,
                 suppress_embeds=embed is None,  # no link previews under plain messages

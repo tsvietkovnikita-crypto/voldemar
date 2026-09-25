@@ -35,6 +35,9 @@ def setup_logging() -> None:
     )
     logfile.setFormatter(formatter)
     logging.basicConfig(level=logging.INFO, handlers=[console, logfile])
+    # wavelink logs each failed track with Lavalink's full multi-kilobyte report; cogs/events.py
+    # logs one line instead, and the full report stays in logs/lavalink.log.
+    logging.getLogger("TrackException").setLevel(logging.CRITICAL)
 
 
 def start_lavalink(settings: Settings) -> LavalinkProcess | None:
