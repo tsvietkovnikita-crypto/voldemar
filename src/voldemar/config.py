@@ -66,6 +66,7 @@ class Settings:
     lavalink_password: str
     lavalink_autostart: bool
     java_path: str
+    allow_direct_links: bool
     default_volume: int
     max_queue_size: int
     idle_timeout: int
@@ -80,24 +81,32 @@ class Settings:
         return f"http://{self.lavalink_host}:{self.lavalink_port}"
 
     def lavalink_env(self) -> dict[str, str]:
-        """Variables that `lavalink/application.yml` reads through its `${...}` placeholders."""
-        return {
-            "LAVALINK_HOST": self.lavalink_host,
-            "LAVALINK_PORT": str(self.lavalink_port),
-            "LAVALINK_PASSWORD": self.lavalink_password,
-            "APPLE_MUSIC_COUNTRY": self.apple_music_country,
-            "APPLE_MUSIC_MEDIA_TOKEN": self.apple_music_media_token,
-            "YOUTUBE_OAUTH_ENABLED": str(self.youtube_oauth_enabled).lower(),
-            "YOUTUBE_OAUTH_REFRESH_TOKEN": self.youtube_oauth_refresh_token,
+        """Spring environment variables that override `lavalink/application.yml` for Lavalink.
+
+        Optional tokens are only set when configured, so an unset token is truly absent rather than
+        an empty string the plugins might try to use.
+        """
+        env = {
+            "SERVER_ADDRESS": self.lavalink_host,
+            "SERVER_PORT": str(self.lavalink_port),
+            "LAVALINK_SERVER_PASSWORD": self.lavalink_password,
+            "LAVALINK_SERVER_SOURCES_HTTP": str(self.allow_direct_links).lower(),
+            "PLUGINS_LAVASRC_APPLEMUSIC_COUNTRYCODE": self.apple_music_country,
+            "PLUGINS_YOUTUBE_OAUTH_ENABLED": str(self.youtube_oauth_enabled).lower(),
         }
+        if self.apple_music_media_token:
+            env["PLUGINS_LAVASRC_APPLEMUSIC_MEDIAAPITOKEN"] = self.apple_music_media_token
+        if self.youtube_oauth_enabled and self.youtube_oauth_refresh_token:
+            env["PLUGINS_YOUTUBE_OAUTH_REFRESHTOKEN"] = self.youtube_oauth_refresh_token
+        return env
 
 
-def load_settings(env_file: Path | None = None) -> Settings:
+def load_settings(env_file: Path | None = None, *, require_token: bool = True) -> Settings:
     """Read settings; values already present in the environment win over the `.env` file."""
     load_dotenv(env_file or PROJECT_ROOT / ".env", override=False)
 
     token = _get_str("DISCORD_TOKEN")
-    if not token:
+    if require_token and not token:
         raise ConfigError(
             "DISCORD_TOKEN is not set. Copy .env.example to .env and paste your bot token into it "
             "(Discord Developer Portal -> your application -> Bot -> Reset Token)."
@@ -117,6 +126,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         lavalink_password=_get_str("LAVALINK_PASSWORD", "youshallnotpass"),
         lavalink_autostart=_get_bool("LAVALINK_AUTOSTART", True),
         java_path=_get_str("JAVA_PATH"),
+        allow_direct_links=_get_bool("ALLOW_DIRECT_LINKS", False),
         default_volume=_get_int("DEFAULT_VOLUME", 80, minimum=0, maximum=150),
         max_queue_size=_get_int("MAX_QUEUE_SIZE", 500, minimum=1, maximum=5000),
         idle_timeout=_get_int("IDLE_TIMEOUT", 180, minimum=10, maximum=86400),

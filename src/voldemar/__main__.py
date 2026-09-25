@@ -9,8 +9,10 @@ from logging.handlers import RotatingFileHandler
 
 import discord
 
+from voldemar import lavalink_server
 from voldemar.bot import VoldemarBot
-from voldemar.config import PROJECT_ROOT, ConfigError, load_settings
+from voldemar.config import PROJECT_ROOT, ConfigError, Settings, load_settings
+from voldemar.lavalink_server import LavalinkError, LavalinkProcess
 
 log = logging.getLogger("voldemar")
 
@@ -35,22 +37,48 @@ def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, handlers=[console, logfile])
 
 
+def start_lavalink(settings: Settings) -> LavalinkProcess | None:
+    """Start Lavalink unless it is already running or autostart is off; return what we started."""
+    if lavalink_server.probe(settings):
+        log.info("Using the Lavalink already running on %s", settings.lavalink_uri)
+        return None
+    if not settings.lavalink_autostart:
+        log.warning(
+            "Lavalink isn't running on %s; waiting for it to come up", settings.lavalink_uri
+        )
+        return None
+
+    process = LavalinkProcess(settings)
+    try:
+        process.start()
+        process.wait_until_ready()
+    except BaseException:
+        process.stop()
+        raise
+    return process
+
+
 def main() -> None:
     setup_logging()
     try:
         settings = load_settings()
-    except ConfigError as e:
+        lavalink = start_lavalink(settings)
+    except (ConfigError, LavalinkError) as e:
         log.error("%s", e)
         sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(130)
 
-    bot = VoldemarBot(settings)
     try:
-        bot.run(settings.discord_token, log_handler=None)
+        VoldemarBot(settings).run(settings.discord_token, log_handler=None)
     except discord.LoginFailure:
         log.error(
             "Discord rejected DISCORD_TOKEN. Reset it in the Developer Portal and update .env."
         )
         sys.exit(1)
+    finally:
+        if lavalink is not None:
+            lavalink.stop()
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 voldemar = "voldemar.__main__:main"
+voldemar-lavalink = "voldemar.lavalink_server:main"
 
 [dependency-groups]
 dev = [
