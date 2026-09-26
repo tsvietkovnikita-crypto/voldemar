@@ -142,8 +142,24 @@ On your PC the bot is only online while the PC is on and the window is open. Ora
      - Keep it at 4 GB: Oracle reclaims free servers that stay under 20% memory use for a week, and the bot uses about 1.3 GB.
    - **Networking:** keep the defaults, with *Assign a public IPv4 address* on. Don't open any extra ports; the bot only makes outgoing connections.
    - **SSH keys:** choose *Paste public keys* and paste the public key (see step 2).
-   - Click **Create**. If it says "Out of capacity", try again later or pick another availability domain.
+   - Click **Create**. If it says "Out of capacity", free ARM servers are sold out right now; see below.
 3. When the instance shows **Running**, copy its **Public IP address**.
+
+**"Out of capacity"?** Oracle only frees up ARM servers now and then, and single-zone regions like Stockholm can't switch zones. Let a script keep trying for you:
+
+1. Create an API key on your PC and upload its public half: *profile icon → My profile → API keys → Add API key → Paste a public key*.
+   ```powershell
+   mkdir $HOME\.oci -Force
+   openssl genrsa -out $HOME\.oci\voldemar_api_key.pem 2048
+   openssl rsa -pubout -in $HOME\.oci\voldemar_api_key.pem -out $HOME\.oci\voldemar_api_key_public.pem
+   ```
+   (`openssl` comes with Git for Windows.)
+2. Paste the "Configuration file preview" Oracle shows into `$HOME\.oci\config`, with `key_file=~/.oci/voldemar_api_key.pem`.
+3. Run the script and leave the PC on:
+   ```powershell
+   uv run --script deploy/oracle-create-instance.py
+   ```
+   It retries every couple of minutes, which can take hours or a day or two. It creates the server with the settings above, prints its IP, and never creates a second one.
 
 ### 2. Install the bot on it (from your PC)
 
