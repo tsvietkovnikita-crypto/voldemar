@@ -1,0 +1,121 @@
+# Lavalink 4.2 configuration for Voldemar.
+#
+# Start Lavalink through `uv run voldemar` (or `uv run voldemar-lavalink`): the launcher overrides the
+# values marked "from .env" using Spring environment variables (SERVER_PORT, LAVALINK_SERVER_PASSWORD,
+# PLUGINS_YOUTUBE_OAUTH_ENABLED, ...), so secrets never have to be written into this file.
+
+server:
+  port: 2333 # from .env: LAVALINK_PORT
+  address: 127.0.0.1 # from .env: LAVALINK_HOST. Localhost only, so Lavalink isn't reachable from the network.
+  http2:
+    enabled: false
+
+lavalink:
+  plugins:
+    # YouTube and YouTube Music. When YouTube playback breaks, update this first.
+    # Pinned to a development build (Sep 17, 2026): release 1.18.2 can no longer stream most
+    # videos ("This video requires login"), and the fixes (working IOS and ANDROID clients) aren't
+    # released yet. Switch back to a release (snapshot: false) once one newer than 1.18.2 is out:
+    # https://github.com/lavalink-devs/youtube-source/releases
+    - dependency: "dev.lavalink.youtube:youtube-plugin:2be8e542d3f6f178e048dca565892684c2e40177"
+      snapshot: true
+    # Apple Music (and more sources we don't enable): https://github.com/topi314/LavaSrc/releases
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      repository: "https://maven.lavalink.dev/releases"
+      snapshot: false
+  server:
+    password: "youshallnotpass" # from .env: LAVALINK_PASSWORD
+    sources:
+      youtube: false # the built-in YouTube source is deprecated; youtube-plugin replaces it
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      nico: false
+      # Direct audio links let any server member make this PC fetch arbitrary URLs (including devices on
+      # your home network) and reveal your IP to the link's host. from .env: ALLOW_DIRECT_LINKS
+      http: false
+      local: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: HIGH
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6 # pages of 100 tracks
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    gc-warnings: true
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true # enables ytsearch: and ytmsearch:
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    # Tried in order, each for what still works as of September 2026 (tested):
+    # - MUSIC: YouTube Music search.
+    # - IOS, ANDROID: the only clients that can stream without signing in; can't read playlists
+    #   (and IOS search comes back empty, which would hide the other clients' results).
+    # - ANDROID_VR: reads playlists and video details, but streams need a login.
+    # - WEB: video details as a fallback; YouTube gives it no downloadable streams.
+    # - TV: streams only with OAuth (YOUTUBE_OAUTH_ENABLED in .env); the last resort.
+    # ANDROID_MUSIC, WEBEMBEDDED and TVHTML5_SIMPLY hit "requires login" or bot checks; MWEB needs a
+    # cipher server.
+    clients:
+      - MUSIC
+      - IOS
+      - ANDROID
+      - ANDROID_VR
+      - WEB
+      - TV
+    clientOptions:
+      IOS:
+        playlistLoading: false
+        searching: false
+      ANDROID:
+        playlistLoading: false
+      ANDROID_VR:
+        playback: false
+      WEB:
+        playback: false
+    oauth:
+      enabled: false # from .env: YOUTUBE_OAUTH_ENABLED (+ YOUTUBE_OAUTH_REFRESH_TOKEN)
+    # If signature deciphering keeps failing, run https://github.com/kikkia/yt-cipher and uncomment:
+    # remoteCipher:
+    #   url: "http://localhost:8001"
+    #   password: "your_secret_password"
+
+  lavasrc:
+    # How Apple Music tracks are found on YouTube: exact recording by ISRC first, then by title and artist.
+    providers:
+      - 'ytsearch:"%ISRC%"'
+      - "ytmsearch:%QUERY%"
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: false # Spotify links are resolved by the bot itself (see src/voldemar/music/spotify.py)
+      applemusic: true
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+      youtube: false
+      vkmusic: false
+      tidal: false
+      qobuz: false
+      ytdlp: false
+      jiosaavn: false
+    applemusic:
+      countryCode: "US" # from .env: APPLE_MUSIC_COUNTRY
+      # No mediaAPIToken here: LavaSrc fetches one from music.apple.com automatically.
+      # from .env (optional override): APPLE_MUSIC_MEDIA_TOKEN
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO
+    dev.lavalink.youtube.http.YoutubeOauth2Handler: INFO # prints the sign-in code and refresh token
+  request:
+    enabled: false

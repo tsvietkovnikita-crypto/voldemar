@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Secrets
+.env
+
+# Lavalink runtime files (downloaded automatically on first start)
+lavalink/Lavalink.jar
+lavalink/Lavalink.jar.part
+lavalink/plugins/
+lavalink/logs/
+
+# Bot and Lavalink logs
+logs/

@@ -1,0 +1,38 @@
+[project]
+name = "voldemar"
+version = "0.1.0"
+description = "Discord music bot for YouTube, YouTube Music, Spotify and Apple Music links, powered by Lavalink"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiohttp>=3.11",
+    "discord.py>=2.7.1,<3",
+    "python-dotenv>=1.1",
+    "wavelink>=3.5.2,<4",
+]
+
+[project.scripts]
+voldemar = "voldemar.__main__:main"
+voldemar-lavalink = "voldemar.lavalink_server:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "ruff>=0.13",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
+allowed-confusables = ["➕"]  # an emoji in bot messages, not a stray plus sign
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:discord.*"]
