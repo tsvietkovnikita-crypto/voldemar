@@ -65,6 +65,7 @@ class Settings:
     lavalink_port: int
     lavalink_password: str
     lavalink_autostart: bool
+    lavalink_profile: str
     java_path: str
     allow_direct_links: bool
     default_volume: int
@@ -75,6 +76,8 @@ class Settings:
     apple_music_media_token: str
     youtube_oauth_enabled: bool
     youtube_oauth_refresh_token: str
+    youtube_cipher_url: str
+    youtube_cipher_token: str
 
     @property
     def lavalink_uri(self) -> str:
@@ -98,6 +101,12 @@ class Settings:
             env["PLUGINS_LAVASRC_APPLEMUSIC_MEDIAAPITOKEN"] = self.apple_music_media_token
         if self.youtube_oauth_enabled and self.youtube_oauth_refresh_token:
             env["PLUGINS_YOUTUBE_OAUTH_REFRESHTOKEN"] = self.youtube_oauth_refresh_token
+        if self.lavalink_profile:  # also loads lavalink/application-<profile>.yml
+            env["SPRING_PROFILES_ACTIVE"] = self.lavalink_profile
+        if self.youtube_cipher_url:
+            env["PLUGINS_YOUTUBE_REMOTECIPHER_URL"] = self.youtube_cipher_url
+            if self.youtube_cipher_token:
+                env["PLUGINS_YOUTUBE_REMOTECIPHER_PASSWORD"] = self.youtube_cipher_token
         return env
 
 
@@ -118,6 +127,13 @@ def load_settings(env_file: Path | None = None, *, require_token: bool = True) -
             f"APPLE_MUSIC_COUNTRY must be a two-letter country code, got {country!r}."
         )
 
+    # Lavalink silently ignores a profile without a file, which would hide a typo.
+    profile = _get_str("LAVALINK_PROFILE")
+    if profile and not (PROJECT_ROOT / "lavalink" / f"application-{profile}.yml").is_file():
+        raise ConfigError(
+            f"LAVALINK_PROFILE={profile!r}, but lavalink/application-{profile}.yml doesn't exist."
+        )
+
     return Settings(
         discord_token=token,
         guild_ids=_get_ids("GUILD_IDS"),
@@ -125,6 +141,7 @@ def load_settings(env_file: Path | None = None, *, require_token: bool = True) -
         lavalink_port=_get_int("LAVALINK_PORT", 2333, minimum=1, maximum=65535),
         lavalink_password=_get_str("LAVALINK_PASSWORD", "youshallnotpass"),
         lavalink_autostart=_get_bool("LAVALINK_AUTOSTART", True),
+        lavalink_profile=profile,
         java_path=_get_str("JAVA_PATH"),
         allow_direct_links=_get_bool("ALLOW_DIRECT_LINKS", False),
         default_volume=_get_int("DEFAULT_VOLUME", 80, minimum=0, maximum=150),
@@ -135,4 +152,6 @@ def load_settings(env_file: Path | None = None, *, require_token: bool = True) -
         apple_music_media_token=_get_str("APPLE_MUSIC_MEDIA_TOKEN"),
         youtube_oauth_enabled=_get_bool("YOUTUBE_OAUTH_ENABLED", False),
         youtube_oauth_refresh_token=_get_str("YOUTUBE_OAUTH_REFRESH_TOKEN"),
+        youtube_cipher_url=_get_str("YOUTUBE_CIPHER_URL"),
+        youtube_cipher_token=_get_str("YOUTUBE_CIPHER_TOKEN"),
     )

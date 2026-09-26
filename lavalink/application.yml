@@ -82,10 +82,8 @@ plugins:
         playback: false
     oauth:
       enabled: false # from .env: YOUTUBE_OAUTH_ENABLED (+ YOUTUBE_OAUTH_REFRESH_TOKEN)
-    # If signature deciphering keeps failing, run https://github.com/kikkia/yt-cipher and uncomment:
-    # remoteCipher:
-    #   url: "http://localhost:8001"
-    #   password: "your_secret_password"
+    # remoteCipher (a https://github.com/kikkia/yt-cipher server for stream signatures) is set from
+    # .env: YOUTUBE_CIPHER_URL + YOUTUBE_CIPHER_TOKEN. Cloud servers need it; see README.
 
   lavasrc:
     # How Apple Music tracks are found on YouTube: exact recording by ISRC first, then by title and artist.

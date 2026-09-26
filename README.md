@@ -123,10 +123,95 @@ All settings live in `.env`:
 | `APPLE_MUSIC_COUNTRY` | `US` | Apple Music storefront for searches |
 | `APPLE_MUSIC_MEDIA_TOKEN` | empty | Only if the automatic Apple Music token stops working (see below) |
 | `YOUTUBE_OAUTH_ENABLED` / `YOUTUBE_OAUTH_REFRESH_TOKEN` | `false` / empty | YouTube sign-in (see below) |
+| `LAVALINK_PROFILE` | empty | `cloud` on a cloud server: uses `lavalink/application-cloud.yml` (see below) |
+| `YOUTUBE_CIPHER_URL` / `YOUTUBE_CIPHER_TOKEN` | empty | A [yt-cipher](https://github.com/kikkia/yt-cipher) server for YouTube signatures (set up for you on a cloud server) |
+
+## Run it 24/7 on Oracle Cloud (free)
+
+On your PC the bot is only online while the PC is on and the window is open. Oracle Cloud's **Always Free** tier gives you a small server that runs it around the clock, for free. On that server the bot restarts by itself after a crash or a reboot.
+
+### 1. Create the server (in your browser)
+
+1. **Sign up** at https://signup.cloud.oracle.com.
+   - A bank card is asked for identity verification only; Always Free resources aren't charged.
+   - The **home region can't be changed later**. In Europe, avoid Frankfurt, which often runs out of free ARM servers; Amsterdam, Stockholm, Milan or Marseille work well.
+2. In the console, open **Compute → Instances → Create instance**:
+   - **Name:** `voldemar`
+   - **Image:** click *Edit* next to "Image and shape", *Change image*, **Canonical Ubuntu 24.04**.
+   - **Shape:** *Change shape*, **Ampere**, **VM.Standard.A1.Flex**, then set **1 OCPU and 4 GB memory**. It's marked "Always Free-eligible".
+     - Keep it at 4 GB: Oracle reclaims free servers that stay under 20% memory use for a week, and the bot uses about 1.3 GB.
+   - **Networking:** keep the defaults, with *Assign a public IPv4 address* on. Don't open any extra ports; the bot only makes outgoing connections.
+   - **SSH keys:** choose *Paste public keys* and paste the public key (see step 2).
+   - Click **Create**. If it says "Out of capacity", try again later or pick another availability domain.
+3. When the instance shows **Running**, copy its **Public IP address**.
+
+### 2. Install the bot on it (from your PC)
+
+Create an SSH key once on your PC, and paste the contents of the `.pub` file in step 1:
+
+```powershell
+ssh-keygen -t ed25519 -f $HOME\.ssh\voldemar_oracle -C voldemar
+Get-Content $HOME\.ssh\voldemar_oracle.pub
+```
+
+Then, with `<IP>` being the server's address:
+
+```powershell
+ssh -i $HOME\.ssh\voldemar_oracle ubuntu@<IP> "curl -fsSL https://raw.githubusercontent.com/tsvietkovnikita-crypto/voldemar/main/deploy/setup-server.sh -o setup-server.sh && sudo bash setup-server.sh --no-start"
+scp -i $HOME\.ssh\voldemar_oracle .env ubuntu@<IP>:/tmp/voldemar.env
+ssh -i $HOME\.ssh\voldemar_oracle ubuntu@<IP> "sudo install -o voldemar -g voldemar -m 600 /tmp/voldemar.env /home/voldemar/voldemar/.env && rm /tmp/voldemar.env"
+```
+
+Check that the server can actually play music before going live:
+
+```powershell
+ssh -i $HOME\.ssh\voldemar_oracle ubuntu@<IP> "sudo -u voldemar -H bash -c 'cd ~/voldemar && .venv/bin/voldemar-check'"
+```
+
+If every source says `ok`, start it with `sudo systemctl restart voldemar` (run over `ssh` as above). **Then stop the bot on your PC.** Two copies with the same token would both answer every command.
+
+### 3. If YouTube fails on the server
+
+YouTube blocks data-center IPs much harder than home connections, so on most cloud servers `voldemar-check` shows YouTube (and therefore Spotify and search) as `FAILED`. The fix is a signed-in YouTube client plus a signature-decoding helper. Run these on the server (`ssh -i $HOME\.ssh\voldemar_oracle ubuntu@<IP>`):
+
+1. Install the helper, which also points the bot's `.env` at it:
+   ```bash
+   sudo bash /home/voldemar/voldemar/deploy/setup-server.sh --with-cipher --no-start
+   ```
+2. In `/home/voldemar/voldemar/.env` (edit with `sudo -u voldemar nano /home/voldemar/voldemar/.env`), set:
+   ```
+   LAVALINK_PROFILE=cloud
+   YOUTUBE_OAUTH_ENABLED=true
+   ```
+3. Sign in with a **spare Google account, never your main one**; accounts used this way can get restricted.
+   1. Run:
+      ```bash
+      sudo systemctl stop voldemar
+      sudo -u voldemar -H bash -c 'cd ~/voldemar && .venv/bin/voldemar-lavalink'
+      ```
+   2. It prints a code. Open https://www.google.com/device on any device, enter the code and pick the spare account.
+   3. Lavalink then prints a **refresh token**. Put it in `.env` as `YOUTUBE_OAUTH_REFRESH_TOKEN` and press Ctrl+C.
+4. Run `voldemar-check` again (as in step 2). When everything says `ok`, run `sudo systemctl restart voldemar`.
+
+### Day to day
+
+All of these are run on the server over `ssh`:
+
+| Task | Command |
+|---|---|
+| Live log | `journalctl -u voldemar -f` |
+| Is it running? | `systemctl status voldemar` |
+| Restart / stop | `sudo systemctl restart voldemar` / `sudo systemctl stop voldemar` |
+| Update to the newest code | `sudo bash /home/voldemar/voldemar/deploy/update.sh` |
+| Test playback | `sudo -u voldemar -H bash -c 'cd ~/voldemar && .venv/bin/voldemar-check'` |
+
+Keep a copy of your `.env` on your PC. If Oracle ever reclaims or deletes the server, create a new one and repeat step 2.
 
 ## Troubleshooting
 
-Logs are in `logs/voldemar.log` (the bot) and `logs/lavalink.log` (the audio server).
+Logs are in `logs/voldemar.log` (the bot) and `logs/lavalink.log` (the audio server). On the Oracle server, also check `journalctl -u voldemar`.
+
+**Songs don't play: is it the bot, or the music source?** Run `uv run voldemar-check` (on the server, see [Day to day](#day-to-day)). It plays a test link from every source without Discord and shows which ones work, while any running bot is left alone.
 
 **Slash commands don't show up.** Set `GUILD_IDS` and restart the bot; without it, global commands can take a while. Make sure the bot was invited with the link it prints (it includes the `applications.commands` scope), then reload Discord with Ctrl+R.
 
@@ -139,7 +224,7 @@ Logs are in `logs/voldemar.log` (the bot) and `logs/lavalink.log` (the audio ser
    1. Set `YOUTUBE_OAUTH_ENABLED=true` in `.env`.
    2. Run `uv run voldemar-lavalink`. The console shows a code: open https://www.google.com/device, enter it and pick the spare account.
    3. Lavalink then prints a refresh token. Put it in `.env` as `YOUTUBE_OAUTH_REFRESH_TOKEN`, stop it with Ctrl+C and start the bot as usual.
-3. If errors mention the signature cipher, run [yt-cipher](https://github.com/kikkia/yt-cipher) and fill in the commented `remoteCipher` block in `lavalink/application.yml`.
+3. If errors mention the signature cipher ("sig function"), run [yt-cipher](https://github.com/kikkia/yt-cipher) and set `YOUTUBE_CIPHER_URL` and `YOUTUBE_CIPHER_TOKEN` in `.env`. On an Oracle server, `setup-server.sh --with-cipher` does all of that for you.
 
 **Apple Music links stopped working.** The access token is normally fetched from music.apple.com automatically. If that fails, get one by hand: open https://music.apple.com in a browser, open DevTools → Sources, and search all `index-*.js` files for a long string starting with `eyJ`. Put it in `.env` as `APPLE_MUSIC_MEDIA_TOKEN`.
 
@@ -150,23 +235,27 @@ Logs are in `logs/voldemar.log` (the bot) and `logs/lavalink.log` (the audio ser
 ## Good to know
 
 - **Private use only.** YouTube's and Spotify's terms don't allow streaming their content through bots at scale. That's why big public music bots like Rythm and Groovy were shut down. Keep Voldemar in your own servers.
-- The bot is only online while this PC is on and running it.
+- On your PC, the bot is only online while the PC is on and running it. For 24/7, see [Run it 24/7 on Oracle Cloud](#run-it-247-on-oracle-cloud-free).
 - Spotify matches are found by artist, title and duration. Rarely, a different version of a song gets picked.
 
 ## Development
 
 ```powershell
-uv run pytest        # unit tests
-uv run ruff check .  # lint
-uv run ruff format . # format
+uv run pytest          # unit tests
+uv run ruff check .    # lint
+uv run ruff format .   # format
+uv run voldemar-check  # can every source actually play right now?
 ```
 
 Project layout:
 
 ```
 lavalink/application.yml      Lavalink and plugin configuration
+lavalink/application-cloud.yml   YouTube setup for cloud servers (LAVALINK_PROFILE=cloud)
+deploy/                       Oracle/Linux server: setup and update scripts, systemd services
 src/voldemar/
   __main__.py                 entry point: starts Lavalink, then the bot
+  check.py                    voldemar-check: playback test without Discord
   bot.py                      Discord client, Lavalink connection, command registration
   config.py                   settings from .env
   lavalink_server.py          finds Java, downloads and runs Lavalink

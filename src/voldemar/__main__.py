@@ -16,6 +16,10 @@ from voldemar.lavalink_server import LavalinkError, LavalinkProcess
 
 log = logging.getLogger("voldemar")
 
+# "Configuration error" (sysexits EX_CONFIG). deploy/voldemar.service doesn't restart on it,
+# since retrying can't fix a missing or rejected token.
+EXIT_CONFIG = 78
+
 
 def setup_logging() -> None:
     # Track titles contain emoji and non-Latin text; a legacy console code page must not break logs.
@@ -66,7 +70,10 @@ def main() -> None:
     try:
         settings = load_settings()
         lavalink = start_lavalink(settings)
-    except (ConfigError, LavalinkError) as e:
+    except ConfigError as e:
+        log.error("%s", e)
+        sys.exit(EXIT_CONFIG)
+    except LavalinkError as e:
         log.error("%s", e)
         sys.exit(1)
     except KeyboardInterrupt:
@@ -78,7 +85,7 @@ def main() -> None:
         log.error(
             "Discord rejected DISCORD_TOKEN. Reset it in the Developer Portal and update .env."
         )
-        sys.exit(1)
+        sys.exit(EXIT_CONFIG)
     finally:
         if lavalink is not None:
             lavalink.stop()

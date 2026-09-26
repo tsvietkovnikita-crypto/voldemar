@@ -1,0 +1,28 @@
+# systemd service for Voldemar, installed by deploy/setup-server.sh.
+# The bot starts its own Lavalink, exactly like `uv run voldemar` on a PC.
+[Unit]
+Description=Voldemar Discord music bot
+Wants=network-online.target
+After=network-online.target yt-cipher.service
+
+[Service]
+Type=simple
+User=voldemar
+Group=voldemar
+WorkingDirectory=/home/voldemar/voldemar
+ExecStart=/home/voldemar/voldemar/.venv/bin/voldemar
+Restart=always
+RestartSec=10
+# Exit code 78 means a configuration problem (missing or rejected DISCORD_TOKEN, bad .env value):
+# restarting can't fix that, and retrying a rejected token every 10 s risks a Discord rate limit.
+RestartPreventExitStatus=78
+# On stop, only the bot gets SIGTERM: it leaves its voice channels and then stops Lavalink itself.
+# Anything still running after 30 seconds is killed.
+KillMode=mixed
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

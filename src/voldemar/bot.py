@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
+import sys
 
 import aiohttp
 import discord
@@ -43,8 +45,13 @@ class VoldemarBot(commands.Bot):
         self.settings = settings
         self.http_session: aiohttp.ClientSession | None = None
         self._lavalink_task: asyncio.Task[None] | None = None
+        self._shutdown_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
+        if sys.platform != "win32":
+            # systemd stops and restarts the service with SIGTERM. Shut down like Ctrl+C instead
+            # of dying on the spot: leave voice channels, then __main__ stops Lavalink.
+            asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, self._shut_down)
         self.http_session = aiohttp.ClientSession()
         # Connecting retries until Lavalink answers; don't hold up the Discord login meanwhile.
         self._lavalink_task = asyncio.create_task(self._connect_lavalink())
@@ -68,6 +75,11 @@ class VoldemarBot(commands.Bot):
                 "LAVALINK_PASSWORD doesn't match the running Lavalink.",
                 self.settings.lavalink_uri,
             )
+
+    def _shut_down(self) -> None:
+        if self._shutdown_task is None:
+            log.info("Received SIGTERM, shutting down")
+            self._shutdown_task = asyncio.create_task(self.close())
 
     async def close(self) -> None:
         await super().close()  # also leaves all voice channels

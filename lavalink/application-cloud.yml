@@ -1,0 +1,23 @@
+# Cloud-server profile: used when .env has LAVALINK_PROFILE=cloud. Spring layers it over
+# application.yml; lists replace the ones there, maps (clientOptions) are merged.
+#
+# From data-center IPs YouTube refuses the clients that work on a home connection ("This video
+# requires login"). Playback therefore goes through the TV client, signed in with a spare Google
+# account (YOUTUBE_OAUTH_ENABLED / YOUTUBE_OAUTH_REFRESH_TOKEN in .env). TV streams have encrypted
+# signatures, which a yt-cipher server decodes (YOUTUBE_CIPHER_URL / YOUTUBE_CIPHER_TOKEN in .env),
+# because the plugin's built-in decoder no longer keeps up with YouTube.
+
+plugins:
+  youtube:
+    clients:
+      - MUSIC # YouTube Music search
+      - TV # playback, with OAuth; it can't load video details, playlists or search
+      - IOS # playback fallbacks in case this server's IP isn't blocked
+      - ANDROID
+      - ANDROID_VR # playlists and video details
+      - WEB # video details fallback
+    clientOptions:
+      TV:
+        videoLoading: false
+        playlistLoading: false
+        searching: false
